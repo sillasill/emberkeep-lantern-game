@@ -4,15 +4,15 @@
 // play, shop, paused, game over and victory.
 //
 // ?seed=N fixes the spawn pattern. ?shot=start|play|shop|win|end (with
-// &seed=N) stages that scene instead of running the loop, paints it twice
-// and sets window.__shotReady for a screenshot.
+// &seed=N) stages that scene instead of running the loop, paints it every
+// frame and sets window.__shotReady for a screenshot.
 import { BEST_KEY, STEP } from './config.js';
 import { createRandom } from './random.js';
 import { createAudio } from './audio.js';
-import { createWorld, EVENT_CLEAR, EVENT_HIT, EVENT_OVER, EVENT_PICKUP, EVENT_SHOOT, EVENT_WIN } from './world.js';
+import { createWorld, EVENT_CLEAR, EVENT_ELITE, EVENT_HIT, EVENT_OVER, EVENT_PICKUP, EVENT_SHOOT, EVENT_WIN } from './world.js';
 import { ACTION_CONFIRM, ACTION_DASH, ACTION_MUTE, ACTION_PAUSE, createInput } from './input.js';
 import {
-  SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_SHOP, SCREEN_TITLE, SCREEN_WIN, SHOP,
+  RELIC_CARDS, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_SHOP, SCREEN_TITLE, SCREEN_WIN, SHOP,
   createRenderer,
 } from './render.js';
 import { stageShot } from './shots.js';
@@ -51,11 +51,14 @@ function saveBest(value) {
 function runShot(name) {
   const scene = stageShot(name, world);
   let painted = 0;
+  // Paint continuously while staged: a headless compositor only presents
+  // frames a page keeps producing, so a one-off paint can be missed by a
+  // screenshot. Ready after the second paint; the tab is closed after use.
   function paint() {
     renderer.draw(world.state, scene.screen, scene.best);
     painted += 1;
-    if (painted < 2) requestAnimationFrame(paint);
-    else window.__shotReady = true;
+    if (painted >= 2) window.__shotReady = true;
+    requestAnimationFrame(paint);
   }
   requestAnimationFrame(paint);
 }
@@ -124,8 +127,17 @@ function runGame() {
       return;
     }
     if (screen === SCREEN_SHOP) {
-      // Shop keys buy; a click on an upgrade row buys it; Enter or the
-      // Next Wave button starts the next wave.
+      // Relic keys (Q/W/E) take a relic card; shop keys buy; a click on a
+      // relic card or an upgrade row does the same; Enter or the Next Wave
+      // button starts the next wave.
+      const relicKey = input.takeRelicKey();
+      if (relicKey) {
+        const relic = world.state.relicDraft && world.state.relicDraft[Number.parseInt(relicKey, 10) - 1];
+        if (relic && world.buyRelic(Number.parseInt(relicKey, 10) - 1)) {
+          audio.relic();
+          announce(`${relic.name} taken. ${relic.flavor}`);
+        }
+      }
       const key = input.takeShopKey();
       if (key) {
         const up = UPGRADES[Number.parseInt(key, 10) - 1];
@@ -135,12 +147,26 @@ function runGame() {
       if (click) {
         const field = renderer.toField(click.x, click.y);
         let bought = false;
-        for (let i = 0; i < UPGRADES.length; i += 1) {
-          const y = SHOP.y + i * 52;
-          if (field.x >= SHOP.x && field.x <= SHOP.x + SHOP.width && field.y >= y && field.y <= y + 44) {
-            if (world.buyUpgrade(UPGRADES[i].id)) { audio.pickup(); announce(`${UPGRADES[i].name} bought.`); }
-            bought = true;
-            break;
+        if (world.state.relicDraft) {
+          for (let i = 0; i < world.state.relicDraft.length; i += 1) {
+            const x = SHOP.x + i * (RELIC_CARDS.width + RELIC_CARDS.gap);
+            if (field.x >= x && field.x <= x + RELIC_CARDS.width
+              && field.y >= RELIC_CARDS.y && field.y <= RELIC_CARDS.y + RELIC_CARDS.height) {
+              const relic = world.state.relicDraft[i];
+              if (world.buyRelic(i)) { audio.relic(); announce(`${relic.name} taken. ${relic.flavor}`); }
+              bought = true;
+              break;
+            }
+          }
+        }
+        if (!bought) {
+          for (let i = 0; i < UPGRADES.length; i += 1) {
+            const y = SHOP.y + i * SHOP.rowH;
+            if (field.x >= SHOP.x && field.x <= SHOP.x + SHOP.width && field.y >= y && field.y <= y + SHOP.rowH - 6) {
+              if (world.buyUpgrade(UPGRADES[i].id)) { audio.pickup(); announce(`${UPGRADES[i].name} bought.`); }
+              bought = true;
+              break;
+            }
           }
         }
         if (!bought && actions & ACTION_CONFIRM) {
@@ -180,7 +206,8 @@ function runGame() {
     });
     if (actions & ACTION_DASH && world.state.player.dashCooldown > 0.9 * 2.5) audio.dash();
     if (events & EVENT_SHOOT) audio.shoot();
-    if (world.state.kills > lastKills) { audio.kill(); lastKills = world.state.kills; }
+    if (events & EVENT_ELITE) audio.elite();
+    if (world.state.kills > lastKills) { audio.kill(world.state.combo); lastKills = world.state.kills; }
     if (events & EVENT_PICKUP) audio.pickup();
     if (world.state.player.hp < lastHp) audio.hurt();
     lastHp = world.state.player.hp;

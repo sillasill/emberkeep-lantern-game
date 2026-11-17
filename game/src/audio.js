@@ -89,8 +89,15 @@ export function createAudio() {
     get muted() { return muted; },
     shoot() { tone(720, 0.09, 'square', 0.12, 320); },
     hit() { noise(0.07, 0.18, 900); },
-    kill() { tone(220, 0.18, 'triangle', 0.2, 60); noise(0.12, 0.12, 700); },
+    // The kill chime climbs with the combo, so a chain sounds like a chain.
+    kill(combo) {
+      const step = Math.min(combo || 0, 12);
+      tone(220 * (1 + step * 0.06), 0.18, 'triangle', 0.2, 60);
+      noise(0.12, 0.12, 700);
+    },
     pickup() { tone(880, 0.07, 'sine', 0.16); setTimeout(() => tone(1320, 0.09, 'sine', 0.14), 60); },
+    relic() { [660, 880, 1108, 1318].forEach((f, i) => setTimeout(() => tone(f, 0.2, 'sine', 0.16), i * 80)); },
+    elite() { tone(98, 0.4, 'sawtooth', 0.22, 55); noise(0.2, 0.1, 500); },
     hurt() { tone(140, 0.25, 'sawtooth', 0.25, 60); },
     dash() { noise(0.14, 0.14, 2400); },
     waveClear() { [523, 659, 784].forEach((f, i) => setTimeout(() => tone(f, 0.16, 'triangle', 0.18), i * 90)); },

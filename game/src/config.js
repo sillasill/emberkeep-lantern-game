@@ -26,13 +26,34 @@ export const PLAYER = {
 /** Enemies inside the lantern's light take this damage multiplier. */
 export const LIGHT_BONUS = 1.5;
 
+/** Kills chained within this many seconds build the score combo. */
+export const COMBO_WINDOW = 2.5;
+/** Each chained kill adds this much score multiplier, up to COMBO_CAP. */
+export const COMBO_STEP = 0.1;
+export const COMBO_CAP = 3;
+
+/** Wave 8 is the Long Dark: the lantern's light shrinks this much. */
+export const DARK_WAVE = 8;
+export const DARK_LIGHT = 0.75;
+
 export const ENEMIES = {
   wisp:    { hp: 22,  speed: 72,  radius: 13, damage: 8,  score: 50,  shards: 1, color: '#b388ff' },
   skitter: { hp: 15,  speed: 158, radius: 11, damage: 6,  score: 75,  shards: 1, color: '#ff7ab8' },
   spitter: { hp: 34,  speed: 58,  radius: 14, damage: 10, score: 100, shards: 2, color: '#7ee787' },
   brute:   { hp: 95,  speed: 46,  radius: 21, damage: 20, score: 200, shards: 3, color: '#ff6b5e' },
+  // Splits into two wisps when slain; the garden's shadows multiply.
+  splitter: { hp: 40, speed: 65,  radius: 15, damage: 10, score: 125, shards: 2, color: '#c9a7ff' },
+  // Stalks, then telegraphs a line and charges through it.
+  charger: { hp: 55,  speed: 62,  radius: 14, damage: 14, score: 150, shards: 2, color: '#ff9f43' },
+  // Drifts in a wide sine and looses a three-bolt spread at the keeper.
+  moth:    { hp: 30,  speed: 82,  radius: 12, damage: 8,  score: 125, shards: 2, color: '#8ef1d4' },
+  // The wave 5 mini-boss: ring bursts and summons, smaller than the Herald.
+  warden:  { hp: 420, speed: 46,  radius: 26, damage: 18, score: 1000, shards: 10, color: '#9fd8ff' },
   herald:  { hp: 950, speed: 42,  radius: 34, damage: 25, score: 2000, shards: 20, color: '#e8c15a' },
 };
+
+/** Elites: bigger, tougher, worth more. Their hp and score scale from the base. */
+export const ELITE = { hp: 2.5, speed: 1.05, radius: 1.15, score: 3, shards: 2 };
 
 /** Shop upgrades between waves. cost grows each time one is bought. */
 export const UPGRADES = [
@@ -42,6 +63,8 @@ export const UPGRADES = [
   { id: 'light',  key: '4', name: 'Bright Lantern', desc: '+32 light radius', base: 6, growth: 1.5, max: 6 },
   { id: 'heart',  key: '5', name: 'Heartwood',    desc: '+25 max HP, heal 25', base: 7, growth: 1.5, max: 6 },
   { id: 'pierce', key: '6', name: 'Piercing Embers', desc: 'bolts pierce +1 foe', base: 12, growth: 1.6, max: 2 },
+  { id: 'multi',  key: '7', name: 'Twin Bolts',    desc: '+1 bolt per shot',   base: 14, growth: 1.7, max: 2 },
+  { id: 'regen',  key: '8', name: 'Moss Heart',    desc: 'regenerate +0.6 HP/s', base: 9, growth: 1.5, max: 4 },
 ];
 
 export const PALETTE = {

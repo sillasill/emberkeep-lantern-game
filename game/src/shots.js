@@ -3,30 +3,36 @@
 // steered by a simple autopilot (aim at the nearest foe, keep a fighting
 // distance, dash when one gets close), so the frame is what a real game
 // looks like and the same seed always gives the same frame. The shop scene
-// plays until wave 1 is cleared; the win scene stages the Herald at low
-// health so the autopilot's kill triggers the real victory screen.
+// plays until wave 1 is cleared; the win scene plays the whole game for
+// real — relics taken, upgrades bought — so the victory panel shows a
+// genuine score, kill count and best combo.
 import { FIELD, STEP } from './config.js';
 import { EVENT_CLEAR, EVENT_OVER, EVENT_WIN } from './world.js';
 import { SCREEN_OVER, SCREEN_PLAY, SCREEN_SHOP, SCREEN_TITLE, SCREEN_WIN } from './render.js';
 
 const START_SECONDS = 5;
-const PLAY_SECONDS = 12;
+const PLAY_SECONDS = 16;
 const LIMIT_SECONDS = 600;
+/** The order the win staging buys upgrades in at each rest. */
+const SHOP_BUY_ORDER = ['damage', 'rate', 'speed', 'light', 'heart', 'pierce', 'multi', 'regen'];
 
-function nearestEnemy(state) {
+function nearestEnemy(state, preferKind) {
   const p = state.player;
   let best = null;
   let bestD = Infinity;
   for (const e of state.enemies) {
+    if (preferKind && e.kind !== preferKind) continue;
     const d = Math.hypot(e.x - p.x, e.y - p.y);
     if (d < bestD) { bestD = d; best = e; }
   }
+  // Nothing of the preferred kind on the field: fall back to any foe.
+  if (!best && preferKind) return nearestEnemy(state, null);
   return { enemy: best, dist: bestD };
 }
 
-function autopilot(state) {
+function autopilot(state, preferKind) {
   const p = state.player;
-  const { enemy, dist } = nearestEnemy(state);
+  const { enemy, dist } = nearestEnemy(state, preferKind);
   let mx = 0;
   let my = 0;
   let aimX = p.x + p.aimX * 100;
@@ -99,27 +105,29 @@ export function stageShot(name, world) {
     return { screen: SCREEN_SHOP, best: world.state.score };
   }
   if (name === 'win') {
-    world.startWave(10);
-    // Let the Herald arrive and leave it nearly unmade; its escort fights on.
-    let staged = false;
+    // Play the whole game for real: take the first offered relic and buy
+    // every affordable upgrade at each rest, the way a keeper would.
+    world.startWave(1);
     for (let i = 0; i < LIMIT_SECONDS / STEP; i += 1) {
       const events = stepWorld(world, autopilot(world.state));
-      if (!staged) {
-        const herald = world.state.enemies.find((e) => e.kind === 'herald');
-        if (herald) {
-          staged = true;
-          herald.hp = 24;
+      if (events & EVENT_CLEAR) {
+        const s = world.state;
+        if (s.relicDraft) world.buyRelic(0);
+        for (const id of SHOP_BUY_ORDER) {
+          while (world.buyUpgrade(id)) { /* keep buying while affordable */ }
         }
+        world.startWave(s.wave + 1);
       }
       if (events & EVENT_WIN) break;
       if (events & EVENT_OVER) break;
     }
     return { screen: world.state.waveState === 'won' ? SCREEN_WIN : SCREEN_PLAY, best: world.state.score };
   }
-  // play: wave 3, mid-fight, lantern lit, HUD full.
-  world.startWave(3);
+  // play: wave 5, mid-fight against the Dusk Warden, lantern lit, HUD full.
+  // The autopilot hunts the Warden so the boss is in frame, not off-screen.
+  world.startWave(5);
   for (let i = 0; i < PLAY_SECONDS / STEP; i += 1) {
-    stepWorld(world, autopilot(world.state));
+    stepWorld(world, autopilot(world.state, 'warden'));
     if (world.state.waveState !== 'fight') break;
   }
   return { screen: SCREEN_PLAY, best: world.state.score };

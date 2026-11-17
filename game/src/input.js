@@ -25,6 +25,7 @@ export function createInput(canvas) {
   let mouseY = 360;
   let mouseDown = false;
   let shopKey = '';
+  let relicKey = '';
   let click = null;
 
   window.addEventListener('keydown', (event) => {
@@ -33,7 +34,10 @@ export function createInput(canvas) {
     else if (PAUSE.has(event.code)) { if (!event.repeat) actions |= ACTION_PAUSE; }
     else if (DASH.has(event.code)) { if (!event.repeat) actions |= ACTION_DASH; }
     else if (MUTE.has(event.code)) { if (!event.repeat) actions |= ACTION_MUTE; }
-    else if (/^Digit[1-6]$/.test(event.code)) shopKey = event.code.slice(5);
+    else if (/^Digit[1-8]$/.test(event.code)) shopKey = event.code.slice(5);
+    else if (event.code === 'KeyQ') relicKey = '1';
+    else if (event.code === 'KeyW') relicKey = '2';
+    else if (event.code === 'KeyE') relicKey = '3';
     else return;
   });
   window.addEventListener('keyup', (event) => { keys.delete(event.code); });
@@ -73,5 +77,7 @@ export function createInput(canvas) {
     takeActions() { const taken = actions; actions = 0; return taken; },
     /** A shop digit pressed since the last call, '' if none. */
     takeShopKey() { const k = shopKey; shopKey = ''; return k; },
+    /** A relic card key (Q/W/E, as '1'/'2'/'3') pressed since the last call. */
+    takeRelicKey() { const k = relicKey; relicKey = ''; return k; },
   };
 }

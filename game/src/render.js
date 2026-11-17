@@ -4,6 +4,7 @@
 // scene is the same every visit. The lantern's light is a radial gradient
 // centred on the keeper: bright near them, dark at the field's edges.
 import { ENEMIES, FIELD, FONT, PALETTE, UPGRADES } from './config.js';
+import { relicById } from './relics.js';
 import { upgradeCost } from './world.js';
 
 export const SCREEN_TITLE = 'title';
@@ -14,7 +15,10 @@ export const SCREEN_OVER = 'over';
 export const SCREEN_WIN = 'win';
 
 /** The shop panel's rows, in field coordinates (main.js clicks them too). */
-export const SHOP = { x: 300, y: 218, width: 680, rowH: 52 };
+export const SHOP = { x: 290, y: 272, width: 700, rowH: 44 };
+/** The three relic cards offered at the rest, in field coordinates. */
+export const RELIC_CARDS = { y: 160, width: 220, height: 100, gap: 20 };
+export const RELIC_KEYS = ['Q', 'W', 'E'];
 
 function seededScatter(count, seed) {
   let a = seed | 0;
@@ -38,6 +42,8 @@ export function createRenderer(canvas) {
   const view = { scale: 1, x: 0, y: 0 };
   const tufts = seededScatter(90, 12345);
   const stones = seededScatter(26, 999);
+  const blooms = seededScatter(42, 4242);
+  const bloomColors = ['#f2c94c', '#ff7ab8', '#8ef1d4', '#b388ff'];
   const fonts = new Map();
 
   function resize() {
@@ -58,6 +64,22 @@ export function createRenderer(canvas) {
     context.textAlign = align || 'left';
     context.textBaseline = baseline || 'alphabetic';
     context.fillText(value, x, y);
+  }
+
+  /** Split a string into lines no wider than maxWidth at the given size. */
+  function wrapLines(value, maxWidth, size) {
+    if (!fonts.has(size)) fonts.set(size, `600 ${size}px ${FONT}`);
+    context.font = fonts.get(size);
+    const words = String(value).split(' ');
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (context.measureText(next).width <= maxWidth || !line) line = next;
+      else { lines.push(line); line = word; }
+    }
+    if (line) lines.push(line);
+    return lines;
   }
 
   function roundRect(x, y, w, h, r) {
@@ -96,11 +118,21 @@ export function createRenderer(canvas) {
       context.arc(s.x + 40, s.y + 30, 4 * s.s, 0, Math.PI * 2);
       context.fill();
     }
+    // Night blooms: tiny flowers that glow faintly in the dark.
+    for (let i = 0; i < blooms.length; i += 1) {
+      const b = blooms[i];
+      context.fillStyle = bloomColors[i % bloomColors.length];
+      context.globalAlpha = 0.35 + 0.25 * Math.sin(state.time * 1.4 + i);
+      context.beginPath();
+      context.arc(b.x, b.y, 3 * b.s, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.globalAlpha = 1;
   }
 
   function drawLight(state) {
     const p = state.player;
-    const r = state.stats.light;
+    const r = state.light || state.stats.light;
     const g = context.createRadialGradient(p.x, p.y, r * 0.15, p.x, p.y, r * 1.9);
     g.addColorStop(0, 'rgba(255, 209, 102, 0.10)');
     g.addColorStop(0.35, 'rgba(255, 209, 102, 0.03)');
@@ -129,9 +161,32 @@ export function createRenderer(canvas) {
   function drawEnemy(e) {
     const def = ENEMIES[e.kind];
     const flash = e.hitFlash > 0;
+    const arriving = e.spawnAge !== undefined && e.spawnAge < 0.35;
     context.save();
     context.translate(e.x, e.y);
     if (flash) context.globalAlpha = 0.65;
+    else if (arriving) context.globalAlpha = 0.25 + (0.75 * e.spawnAge) / 0.35;
+    // Spawn telegraph: a closing ring where the shadow arrives.
+    if (arriving) {
+      context.strokeStyle = def.color;
+      context.globalAlpha = 0.8;
+      context.lineWidth = 2;
+      context.beginPath();
+      context.arc(0, 0, e.radius + 14 * (1 - e.spawnAge / 0.35), 0, Math.PI * 2);
+      context.stroke();
+      context.globalAlpha = 0.25 + (0.75 * e.spawnAge) / 0.35;
+    }
+    // A charger's telegraph line: the path it is about to take.
+    if (e.kind === 'charger' && e.chargeState === 'tele') {
+      context.strokeStyle = 'rgba(255, 159, 67, 0.75)';
+      context.lineWidth = 3;
+      context.setLineDash([8, 8]);
+      context.beginPath();
+      context.moveTo(0, 0);
+      context.lineTo(e.chargeDx * 260, e.chargeDy * 260);
+      context.stroke();
+      context.setLineDash([]);
+    }
     if (e.kind === 'wisp') {
       context.fillStyle = def.color;
       context.beginPath();
@@ -181,18 +236,73 @@ export function createRenderer(canvas) {
       context.moveTo(e.radius * 0.6, -e.radius * 0.7);
       context.lineTo(e.radius * 0.9, -e.radius * 1.2);
       context.stroke();
-    } else {
-      // The Gloom Herald: a crowned shadow with a gold ring.
-      context.fillStyle = '#241a3a';
+    } else if (e.kind === 'splitter') {
+      // Two lobes joined: the shadow that divides.
+      context.fillStyle = def.color;
+      context.beginPath();
+      context.arc(-e.radius * 0.45, 0, e.radius * 0.65, 0, Math.PI * 2);
+      context.arc(e.radius * 0.45, 0, e.radius * 0.65, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = 'rgba(255,255,255,0.35)';
+      context.lineWidth = 2;
+      context.beginPath();
+      context.moveTo(0, -e.radius * 0.5);
+      context.lineTo(0, e.radius * 0.5);
+      context.stroke();
+    } else if (e.kind === 'charger') {
+      // A horned wedge, leaning into its charge.
+      context.fillStyle = def.color;
+      context.beginPath();
+      context.moveTo(e.radius, 0);
+      context.lineTo(-e.radius * 0.7, -e.radius * 0.8);
+      context.lineTo(-e.radius * 0.3, 0);
+      context.lineTo(-e.radius * 0.7, e.radius * 0.8);
+      context.closePath();
+      context.fill();
+      context.fillStyle = '#fff';
+      context.beginPath();
+      context.arc(e.radius * 0.35, -3, 2.6, 0, Math.PI * 2);
+      context.arc(e.radius * 0.35, 3, 2.6, 0, Math.PI * 2);
+      context.fill();
+    } else if (e.kind === 'moth') {
+      // Wide pale wings that beat as it drifts.
+      const beat = Math.sin(e.phase * 8) * 0.35;
+      context.fillStyle = def.color;
+      context.beginPath();
+      context.ellipse(-e.radius * 0.7, -e.radius * (0.3 + beat), e.radius * 0.8, e.radius * 0.45, -0.5, 0, Math.PI * 2);
+      context.ellipse(e.radius * 0.7, -e.radius * (0.3 + beat), e.radius * 0.8, e.radius * 0.45, 0.5, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = '#0d1a16';
+      context.beginPath();
+      context.ellipse(0, 2, 5, 8, 0, 0, Math.PI * 2);
+      context.fill();
+    } else if (e.kind === 'warden') {
+      // The Dusk Warden: a tall blue shadow with a square crown.
+      context.fillStyle = '#16283d';
       context.beginPath();
       context.arc(0, 0, e.radius, 0, Math.PI * 2);
       context.fill();
-      context.strokeStyle = PALETTE.boss;
+      context.strokeStyle = '#9fd8ff';
       context.lineWidth = 4;
       context.beginPath();
       context.arc(0, 0, e.radius, 0, Math.PI * 2);
       context.stroke();
-      context.fillStyle = PALETTE.boss;
+      context.fillStyle = '#9fd8ff';
+      context.fillRect(-14, -e.radius - 8, 8, 12);
+      context.fillRect(-3, -e.radius - 12, 8, 16);
+      context.fillRect(8, -e.radius - 8, 8, 12);
+    } else {
+      // The Gloom Herald: a crowned shadow with a gold ring.
+      context.fillStyle = e.enraged ? '#3a1020' : '#241a3a';
+      context.beginPath();
+      context.arc(0, 0, e.radius, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = e.enraged ? '#ff5d5d' : PALETTE.boss;
+      context.lineWidth = 4;
+      context.beginPath();
+      context.arc(0, 0, e.radius, 0, Math.PI * 2);
+      context.stroke();
+      context.fillStyle = e.enraged ? '#ff5d5d' : PALETTE.boss;
       context.beginPath();
       context.moveTo(-18, -e.radius + 6);
       context.lineTo(-12, -e.radius - 14);
@@ -204,13 +314,23 @@ export function createRenderer(canvas) {
       context.closePath();
       context.fill();
     }
-    // Eyes, and a health arc for hurt foes.
-    context.fillStyle = '#fff';
-    context.beginPath();
-    context.arc(-e.radius * 0.35, -e.radius * 0.15, 2.6, 0, Math.PI * 2);
-    context.arc(e.radius * 0.35, -e.radius * 0.15, 2.6, 0, Math.PI * 2);
-    context.fill();
-    if (e.hp < e.maxHp && e.kind !== 'herald') {
+    // Eyes (charger and moth draw their own), and a health arc for hurt foes.
+    if (e.kind !== 'charger' && e.kind !== 'moth') {
+      context.fillStyle = '#fff';
+      context.beginPath();
+      context.arc(-e.radius * 0.35, -e.radius * 0.15, 2.6, 0, Math.PI * 2);
+      context.arc(e.radius * 0.35, -e.radius * 0.15, 2.6, 0, Math.PI * 2);
+      context.fill();
+    }
+    // Elites wear a gold ring.
+    if (e.elite) {
+      context.strokeStyle = '#f2c94c';
+      context.lineWidth = 3;
+      context.beginPath();
+      context.arc(0, 0, e.radius + 8, 0, Math.PI * 2);
+      context.stroke();
+    }
+    if (e.hp < e.maxHp && e.kind !== 'herald' && e.kind !== 'warden') {
       context.strokeStyle = 'rgba(255,255,255,0.35)';
       context.lineWidth = 3;
       context.beginPath();
@@ -299,9 +419,28 @@ export function createRenderer(canvas) {
     if (state.bossMax > 0 && state.bossHp > 0) {
       context.fillStyle = 'rgba(7, 10, 18, 0.72)';
       context.fillRect(340, 60, 600, 26);
-      context.fillStyle = PALETTE.boss;
+      context.fillStyle = state.bossLabel === 'THE GLOOM HERALD' ? PALETTE.boss : '#9fd8ff';
       context.fillRect(344, 64, 592 * (state.bossHp / state.bossMax), 18);
-      text('THE GLOOM HERALD', 640, 73, 15, PALETTE.boss, 'center', 'middle');
+      text(state.bossLabel || 'BOSS', 640, 73, 15, state.bossLabel === 'THE GLOOM HERALD' ? PALETTE.boss : '#9fd8ff', 'center', 'middle');
+    }
+    // Combo: chained kills multiply the score while the timer holds.
+    if (state.combo >= 3) {
+      const mult = Math.min(3, 1 + 0.1 * state.combo);
+      text(`COMBO x${mult.toFixed(1)}`, 1260, 66, 20, PALETTE.gold, 'right', 'middle');
+      context.fillStyle = 'rgba(242, 201, 76, 0.35)';
+      context.fillRect(1140, 72, 120 * Math.max(0, state.comboTimer / 2.5), 4);
+    }
+    // Owned relics, as small coloured initials under the bar.
+    const ownedIds = Object.keys(state.relics);
+    for (let i = 0; i < ownedIds.length; i += 1) {
+      const relic = relicById(ownedIds[i]);
+      if (!relic) continue;
+      const cx = 30 + i * 30;
+      context.fillStyle = relic.color;
+      context.beginPath();
+      context.arc(cx, 66, 11, 0, Math.PI * 2);
+      context.fill();
+      text(relic.name[0], cx, 66, 13, '#070a12', 'center', 'middle');
     }
     // Wave banner.
     if (state.bannerTimer > 0) {
@@ -333,9 +472,35 @@ export function createRenderer(canvas) {
   function drawShop(state, best) {
     context.fillStyle = 'rgba(7, 10, 18, 0.72)';
     context.fillRect(0, 0, FIELD.width, FIELD.height);
-    text('The Lantern Rest', FIELD.width / 2, 84, 44, PALETTE.gold, 'center', 'middle');
-    text(`Wave ${state.wave} cleared  •  Score ${state.score}  •  Sunshards ◆ ${state.shards}`, FIELD.width / 2, 126, 20, PALETTE.text, 'center', 'middle');
-    text('Spend shards to grow stronger, then face the next wave.', FIELD.width / 2, 156, 18, PALETTE.muted, 'center', 'middle');
+    text('The Lantern Rest', FIELD.width / 2, 72, 40, PALETTE.gold, 'center', 'middle');
+    text(`Wave ${state.wave} cleared  •  Score ${state.score}  •  Sunshards ◆ ${state.shards}`, FIELD.width / 2, 108, 20, PALETTE.text, 'center', 'middle');
+    text(state.relicDraft && state.relicDraft.length > 0
+      ? 'A relic chooses you — then spend shards to grow stronger.'
+      : 'Spend shards to grow stronger, then face the next wave.', FIELD.width / 2, 136, 18, PALETTE.muted, 'center', 'middle');
+    // Relic draft: three cards, free, one per rest.
+    if (state.relicDraft && state.relicDraft.length > 0) {
+      for (let i = 0; i < state.relicDraft.length; i += 1) {
+        const relic = state.relicDraft[i];
+        const x = SHOP.x + i * (RELIC_CARDS.width + RELIC_CARDS.gap);
+        const y = RELIC_CARDS.y;
+        const taken = state.relicTaken;
+        context.fillStyle = taken ? '#101823' : '#1a2b1e';
+        roundRect(x, y, RELIC_CARDS.width, RELIC_CARDS.height, 10);
+        context.fill();
+        context.strokeStyle = taken ? PALETTE.panelEdge : relic.color;
+        context.lineWidth = taken ? 1 : 2;
+        roundRect(x, y, RELIC_CARDS.width, RELIC_CARDS.height, 10);
+        context.stroke();
+        text(`[${RELIC_KEYS[i]}] ${relic.name}`, x + RELIC_CARDS.width / 2, y + 24, 19, taken ? PALETTE.muted : relic.color, 'center', 'middle');
+        // The description wraps to two lines inside the card; a one-line
+        // draw overflowed the card for the longer relics.
+        const descLines = wrapLines(relic.desc, RELIC_CARDS.width - 16, 13);
+        for (let j = 0; j < descLines.length; j += 1) {
+          text(descLines[j], x + RELIC_CARDS.width / 2, y + 50 + j * 16, 13, taken ? PALETTE.muted : PALETTE.text, 'center', 'middle');
+        }
+        text(relic.flavor, x + RELIC_CARDS.width / 2, y + RELIC_CARDS.height - 12, 13, PALETTE.muted, 'center', 'middle');
+      }
+    }
     for (let i = 0; i < UPGRADES.length; i += 1) {
       const up = UPGRADES[i];
       const owned = state.upgrades[up.id] || 0;
@@ -344,21 +509,22 @@ export function createRenderer(canvas) {
       const afford = !maxed && state.shards >= cost;
       const y = SHOP.y + i * SHOP.rowH;
       context.fillStyle = afford ? '#16242f' : '#101823';
-      roundRect(SHOP.x, y, SHOP.width, SHOP.rowH - 8, 8);
+      roundRect(SHOP.x, y, SHOP.width, SHOP.rowH - 6, 8);
       context.fill();
       context.strokeStyle = afford ? PALETTE.gold : PALETTE.panelEdge;
       context.lineWidth = 1.5;
-      roundRect(SHOP.x, y, SHOP.width, SHOP.rowH - 8, 8);
+      roundRect(SHOP.x, y, SHOP.width, SHOP.rowH - 6, 8);
       context.stroke();
-      text(`[${up.key}] ${up.name}`, SHOP.x + 18, y + 22, 20, PALETTE.text, 'left', 'middle');
-      text(up.desc, SHOP.x + 300, y + 22, 18, PALETTE.muted, 'left', 'middle');
-      text(maxed ? 'MAX' : `◆ ${cost}  (${owned}/${up.max})`, SHOP.x + SHOP.width - 18, y + 22, 18, maxed ? PALETTE.muted : afford ? PALETTE.gold : '#c96a5a', 'right', 'middle');
+      text(`[${up.key}] ${up.name}`, SHOP.x + 18, y + 19, 19, PALETTE.text, 'left', 'middle');
+      text(up.desc, SHOP.x + 300, y + 19, 17, PALETTE.muted, 'left', 'middle');
+      text(maxed ? 'MAX' : `◆ ${cost}  (${owned}/${up.max})`, SHOP.x + SHOP.width - 18, y + 19, 17, maxed ? PALETTE.muted : afford ? PALETTE.gold : '#c96a5a', 'right', 'middle');
     }
-    text('Press 1–6 or click an upgrade to buy  •  Press Enter or click Next Wave to continue', FIELD.width / 2, SHOP.y + UPGRADES.length * SHOP.rowH + 18, 20, PALETTE.gold, 'center', 'middle');
+    const footY = SHOP.y + UPGRADES.length * SHOP.rowH + 14;
+    text('Q/W/E or click a relic  •  1–8 or click an upgrade to buy  •  Enter or click Next Wave to continue', FIELD.width / 2, footY, 18, PALETTE.gold, 'center', 'middle');
     context.fillStyle = '#1d3a2a';
-    roundRect(FIELD.width / 2 - 110, SHOP.y + UPGRADES.length * SHOP.rowH + 44, 220, 44, 10);
+    roundRect(FIELD.width / 2 - 110, footY + 16, 220, 40, 10);
     context.fill();
-    text(`Next Wave ${state.wave + 1} →`, FIELD.width / 2, SHOP.y + UPGRADES.length * SHOP.rowH + 72, 20, PALETTE.text, 'center', 'middle');
+    text(`Next Wave ${state.wave + 1} →`, FIELD.width / 2, footY + 36, 19, PALETTE.text, 'center', 'middle');
   }
 
   /** Paint one frame: the field, then the HUD or a panel for the screen. */
@@ -404,6 +570,13 @@ export function createRenderer(canvas) {
     drawPlayer(state);
     context.fillStyle = PALETTE.bullet;
     for (const b of state.bullets) {
+      // A short trail behind each bolt, so shots read as shots.
+      context.strokeStyle = 'rgba(255, 179, 71, 0.55)';
+      context.lineWidth = 3;
+      context.beginPath();
+      context.moveTo(b.x - b.vx * 0.03, b.y - b.vy * 0.03);
+      context.lineTo(b.x, b.y);
+      context.stroke();
       context.beginPath();
       context.arc(b.x, b.y, 5, 0, Math.PI * 2);
       context.fill();
@@ -436,6 +609,7 @@ export function createRenderer(canvas) {
       drawPanel('EMBERKEEP', [
         'The last lantern in a garden gone dark.',
         'Hold the light. Spend the shards. Survive ten waves.',
+        'Relics choose your path — the Warden waits on wave 5.',
         'Move WASD / arrows  •  Aim mouse  •  Hold click to shoot',
         'Dash Shift  •  Pause P  •  Mute M',
         `Best score: ${best}`,
@@ -449,13 +623,14 @@ export function createRenderer(canvas) {
     } else if (screen === SCREEN_OVER) {
       drawPanel('The Light Goes Out', [
         `Score ${state.score}  •  Best ${best}`,
-        `Wave ${state.wave} of 10  •  ${state.kills} shadows banished  •  ${state.shards} shards kept`,
+        `Wave ${state.wave} of 10  •  ${state.kills} shadows banished  •  Best combo x${Math.min(3, 1 + 0.1 * state.bestCombo).toFixed(1)}`,
+        `${Object.keys(state.relics).length} relic${Object.keys(state.relics).length === 1 ? '' : 's'} found  •  ${state.shards} shards kept`,
         '',
       ], 'Press Space or click to play again');
     } else if (screen === SCREEN_WIN) {
       drawPanel('VICTORY — Dawn Returns', [
         `Score ${state.score}  •  Best ${best}`,
-        `All ten waves cleared  •  ${state.kills} shadows banished`,
+        `All ten waves cleared  •  ${state.kills} shadows banished  •  Best combo x${Math.min(3, 1 + 0.1 * state.bestCombo).toFixed(1)}`,
         'The Gloom Herald is unmade. The garden blooms again.',
       ], 'Press Space or click to play again', PALETTE.gold);
     }

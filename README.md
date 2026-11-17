@@ -18,19 +18,31 @@ on wave 10. Foes inside your lantern's light take 50% more damage, so
 holding ground near the light matters — but the horde comes from every
 side, and the dark beyond the light is where they are fastest.
 
+New shadows stalk the garden: splitters divide into wisps when slain,
+chargers telegraph a line and rush through it, moths loose three-bolt
+spreads, and golden elites hit harder and pay more. Wave 5 brings the
+Dusk Warden, wave 6 a swarm, wave 8 the Long Dark (your light shrinks),
+wave 9 a siege — and below half health, the Herald rages.
+
 - **Fight:** move with WASD or arrows, aim with the mouse, hold click to
   shoot ember bolts. Shift dashes (briefly invulnerable). Enemies drop
-  sunshards; hearts heal.
-- **Grow:** between waves, the Lantern Rest shop sells six upgrades for
-  shards — ember damage, fire rate, move speed, lantern radius, max HP,
-  piercing bolts. Buy with keys 1–6 or by clicking, then press Enter for
-  the next wave.
+  sunshards; hearts heal. Chain kills within a few seconds to build a
+  score combo, up to x3.
+- **Relics:** after every cleared wave, the Lantern Rest offers a choice
+  of three relics, free, one per rest — Ember Nova, Twin Flame, Frostbite
+  Embers, Bloodlight, Ricochet Embers, Thorned Lantern, Gilded Shards,
+  Swift Step. Each run draws a different hand, so no two runs play alike.
+- **Grow:** the Rest's shop sells eight upgrades for shards — ember
+  damage, fire rate, move speed, lantern radius, max HP, piercing bolts,
+  twin bolts, regeneration. Buy with keys 1–8 or by clicking, pick a
+  relic with Q/W/E or by clicking, then press Enter for the next wave.
 - **Win or lose:** clear all ten waves and dawn returns. Fall, and the
-  light goes out — your score, best score, wave and kills are shown, and
-  you can play again at once.
+  light goes out — your score, best score, wave, kills, best combo and
+  relics are shown, and you can play again at once.
 - **Feel:** fixed 1/60 s simulation, particles, screen shake, floating
-  damage numbers, hit flashes, wave banners, a boss health bar, and
-  WebAudio synth sound effects and drone (M mutes). Best score is kept
+  damage numbers, hit flashes, spawn telegraphs, bolt trails, wave
+  banners, a boss health bar, and WebAudio synth sound effects and drone
+  (M mutes) — the kill chime climbs with your combo. Best score is kept
   in `localStorage`. P pauses.
 
 ## Play it
@@ -53,7 +65,8 @@ or generated in code.
 - `game/src/random.js` — the seeded generator (mulberry32).
 - `game/src/audio.js` — WebAudio synth effects and ambience.
 - `game/src/input.js` — keyboard and pointer input.
-- `game/src/world.js` — the rules: keeper, horde, waves, shop, boss.
+- `game/src/world.js` — the rules: keeper, horde, waves, shop, relics,
+  combo, bosses. `game/src/relics.js` — the eight relics and the draft.
 - `game/src/render.js` — drawing only: field, light, HUD, panels, shop.
 - `game/src/shots.js` — the deterministic screenshot scenes
   (`?shot=start|play|shop|win|end&seed=N`, staged by the real rules and
