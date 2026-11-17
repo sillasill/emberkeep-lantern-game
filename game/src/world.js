@@ -7,9 +7,11 @@
 // keeper matters.
 import {
   COMBO_CAP, COMBO_STEP, COMBO_WINDOW, DARK_LIGHT, DARK_WAVE,
-  ELITE, ENEMIES, FIELD, LIGHT_BONUS, PLAYER, STEP, UPGRADES, WAVES,
+  DIFFICULTIES, ELITE, ENEMIES, FIELD, LIGHT_BONUS, PLAYER, STEP, WAVES,
 } from './config.js';
 import { draftRelics } from './relics.js';
+import { waveBanner, waveComposition } from './waves.js';
+import { UPGRADES, applyUpgradeEffect, upgradeCost } from './upgrades.js';
 
 export const EVENT_HIT = 1;
 export const EVENT_KILL = 2;
@@ -25,83 +27,8 @@ const TAU = Math.PI * 2;
 
 function dist2(ax, ay, bx, by) { const dx = ax - bx; const dy = ay - by; return dx * dx + dy * dy; }
 
-/**
- * What wave n sends. Each part is {kind, count, elite}: elite counts are
- * the stronger, golden-ringed versions of that kind. Wave 5 brings the
- * Dusk Warden, wave 6 a swarm, wave 8 the Long Dark, wave 9 a siege, and
- * wave 10 the Herald.
- */
-export function waveComposition(n) {
-  if (n >= WAVES) {
-    return [
-      { kind: 'herald', count: 1, elite: 0 },
-      { kind: 'wisp', count: 6, elite: 0 },
-      { kind: 'moth', count: 2, elite: 0 },
-    ];
-  }
-  const table = {
-    1: [
-      { kind: 'wisp', count: 6, elite: 0 },
-    ],
-    2: [
-      { kind: 'wisp', count: 7, elite: 0 },
-      { kind: 'skitter', count: 4, elite: 0 },
-    ],
-    3: [
-      { kind: 'wisp', count: 8, elite: 0 },
-      { kind: 'skitter', count: 5, elite: 0 },
-      { kind: 'spitter', count: 2, elite: 0 },
-    ],
-    4: [
-      { kind: 'wisp', count: 9, elite: 0 },
-      { kind: 'skitter', count: 6, elite: 1 },
-      { kind: 'spitter', count: 3, elite: 0 },
-      { kind: 'brute', count: 1, elite: 0 },
-      { kind: 'splitter', count: 2, elite: 0 },
-    ],
-    5: [
-      { kind: 'warden', count: 1, elite: 0 },
-      { kind: 'wisp', count: 8, elite: 0 },
-      { kind: 'skitter', count: 5, elite: 0 },
-      { kind: 'spitter', count: 2, elite: 0 },
-      { kind: 'splitter', count: 2, elite: 0 },
-    ],
-    6: [
-      { kind: 'skitter', count: 14, elite: 1 },
-      { kind: 'wisp', count: 6, elite: 0 },
-      { kind: 'moth', count: 3, elite: 0 },
-    ],
-    7: [
-      { kind: 'wisp', count: 10, elite: 0 },
-      { kind: 'skitter', count: 6, elite: 0 },
-      { kind: 'spitter', count: 4, elite: 1 },
-      { kind: 'brute', count: 3, elite: 1 },
-      { kind: 'charger', count: 3, elite: 0 },
-      { kind: 'moth', count: 2, elite: 0 },
-      { kind: 'splitter', count: 3, elite: 0 },
-    ],
-    8: [
-      { kind: 'wisp', count: 9, elite: 0 },
-      { kind: 'charger', count: 4, elite: 1 },
-      { kind: 'moth', count: 4, elite: 0 },
-      { kind: 'spitter', count: 3, elite: 0 },
-      { kind: 'brute', count: 2, elite: 0 },
-      { kind: 'splitter', count: 2, elite: 0 },
-    ],
-    9: [
-      { kind: 'brute', count: 4, elite: 1 },
-      { kind: 'spitter', count: 4, elite: 0 },
-      { kind: 'moth', count: 3, elite: 1 },
-      { kind: 'charger', count: 3, elite: 0 },
-      { kind: 'splitter', count: 3, elite: 0 },
-      { kind: 'wisp', count: 8, elite: 0 },
-    ],
-  };
-  return table[n] || table[1];
-}
-
-export function upgradeCost(up, owned) {
-  return Math.round(up.base * up.growth ** owned);
+function difficultyOf(id) {
+  return DIFFICULTIES.find((d) => d.id === id) || DIFFICULTIES[1];
 }
 
 /** The score multiplier for a kill chain of `combo` kills. */
@@ -132,6 +59,7 @@ export function createWorld(random) {
     spawnQueue: [], spawnTimer: 0, enemiesLeft: 0,
     shake: 0, flash: 0, banner: '', bannerTimer: 0,
     bossHp: 0, bossMax: 0, bossLabel: '',
+    difficulty: 'keeper', endless: false, secondWindUsed: false, shotCount: 0,
   };
 
   function addParticle(x, y, vx, vy, life, size, color) {
@@ -170,6 +98,24 @@ export function createWorld(random) {
     state.spawnQueue.length = 0; state.enemiesLeft = 0;
     state.shake = 0; state.flash = 0; state.banner = ''; state.bannerTimer = 0;
     state.bossHp = 0; state.bossMax = 0; state.bossLabel = '';
+    state.difficulty = 'keeper'; state.endless = false;
+    state.secondWindUsed = false; state.shotCount = 0;
+  }
+
+  /** Choose how hard the dark fights back. Only before the run starts. */
+  function setDifficulty(id) {
+    if (state.waveState !== 'title') return false;
+    if (!DIFFICULTIES.some((d) => d.id === id)) return false;
+    state.difficulty = id;
+    return true;
+  }
+
+  /** After victory: keep playing past wave 10, the dark returning denser. */
+  function startEndless() {
+    if (state.waveState !== 'won') return false;
+    state.endless = true;
+    startWave(state.wave + 1);
+    return true;
   }
 
   function spawnEnemy(kind, elite = false) {
@@ -181,21 +127,22 @@ export function createWorld(random) {
     else if (side === 1) { x = FIELD.width + 30; y = random() * FIELD.height; }
     else if (side === 2) { x = random() * FIELD.width; y = FIELD.height + 30; }
     else { x = -30; y = random() * FIELD.height; }
-    const hpScale = 1 + (state.wave - 1) * 0.08;
+    const hpScale = (1 + (state.wave - 1) * 0.08) * difficultyOf(state.difficulty).hp;
     const enemy = {
       kind, x, y,
       hp: def.hp * hpScale * (elite ? ELITE.hp : 1),
       maxHp: def.hp * hpScale * (elite ? ELITE.hp : 1),
       speed: def.speed * (0.9 + random() * 0.2) * (elite ? ELITE.speed : 1),
       radius: def.radius * (elite ? ELITE.radius : 1),
-      damage: def.damage,
+      damage: def.damage * difficultyOf(state.difficulty).damage,
       score: def.score * (elite ? ELITE.score : 1),
       shards: def.shards * (elite ? ELITE.shards : 1),
       elite,
       shootTimer: 1 + random() * 1.5, summonTimer: 5, burstTimer: 3.5,
-      spreadTimer: 1.5, chargeState: 'stalk', chargeT: 0, chargeDx: 0, chargeDy: 0,
+      spreadTimer: 1.5, blinkTimer: 2, thornTimer: 2,
+      chargeState: 'stalk', chargeT: 0, chargeDx: 0, chargeDy: 0,
       phase: random() * TAU, hitFlash: 0, knockX: 0, knockY: 0,
-      spawnAge: 0, slowTimer: 0, enraged: false,
+      spawnAge: 0, slowTimer: 0, enraged: false, phase3: false,
     };
     state.enemies.push(enemy);
     if (kind === 'herald') {
@@ -207,18 +154,10 @@ export function createWorld(random) {
     return enemy;
   }
 
-  function waveBanner(n) {
-    if (n >= WAVES) return 'Wave 10 — The Gloom Herald';
-    if (n === 5) return 'Wave 5 — The Dusk Warden';
-    if (n === 6) return 'Wave 6 — The Swarm';
-    if (n === 8) return 'Wave 8 — The Long Dark';
-    if (n === 9) return 'Wave 9 — The Siege';
-    return `Wave ${n}`;
-  }
-
   function startWave(n) {
     state.wave = n;
     state.waveState = 'fight';
+    if (n > WAVES) state.endless = true;
     state.darkness = n === DARK_WAVE;
     state.spawnQueue = [];
     for (const part of waveComposition(n)) {
@@ -247,7 +186,7 @@ export function createWorld(random) {
     state.combo += 1;
     state.comboTimer = COMBO_WINDOW;
     if (state.combo > state.bestCombo) state.bestCombo = state.combo;
-    const gain = Math.round(enemy.score * comboMultiplier(state.combo));
+    const gain = Math.round(enemy.score * comboMultiplier(state.combo) * difficultyOf(state.difficulty).score);
     state.score += gain;
     state.kills += 1;
     state.enemiesLeft = state.spawnQueue.length + state.enemies.length;
@@ -305,6 +244,20 @@ export function createWorld(random) {
       enemy.hitFlash = 0.12;
     }
     if (player.hp <= 0) {
+      // Second Dawn: the first killing blow is refused once per run.
+      if (state.relics['second-wind'] && !state.secondWindUsed) {
+        state.secondWindUsed = true;
+        player.hp = Math.ceil(player.maxHp * 0.5);
+        player.invulnerable = 2;
+        banner('Second Dawn — the light refuses to die');
+        burst(player.x, player.y, '#fff3c4', 30, 240);
+        for (let i = state.enemies.length - 1; i >= 0; i -= 1) {
+          const o = state.enemies[i];
+          if (o.kind !== 'herald' && o.kind !== 'warden'
+            && Math.hypot(o.x - player.x, o.y - player.y) < 220) killEnemy(o, i);
+        }
+        return EVENT_HIT;
+      }
       player.hp = 0;
       state.waveState = 'lost';
       burst(player.x, player.y, '#ffd166', 40, 220);
@@ -322,14 +275,7 @@ export function createWorld(random) {
     if (state.shards < cost) return false;
     state.shards -= cost;
     state.upgrades[id] = owned + 1;
-    if (id === 'damage') stats.damage += 4;
-    else if (id === 'rate') stats.fireInterval *= 0.87;
-    else if (id === 'speed') stats.speed *= 1.12;
-    else if (id === 'light') stats.light += 32;
-    else if (id === 'heart') { player.maxHp += 25; player.hp = Math.min(player.maxHp, player.hp + 25); }
-    else if (id === 'pierce') stats.pierce += 1;
-    else if (id === 'multi') stats.multishot += 1;
-    else if (id === 'regen') stats.regen += 0.6;
+    applyUpgradeEffect(id, stats, player);
     burst(player.x, player.y, '#ffd166', 14, 120);
     return true;
   }
@@ -391,6 +337,9 @@ export function createWorld(random) {
     if (input.firing && player.fireTimer <= 0) {
       player.fireTimer = stats.fireInterval;
       const count = 1 + stats.multishot;
+      state.shotCount += 1;
+      // Overcharge Ember: every 6th shot is a heavy ember.
+      const overcharged = Boolean(state.relics.overcharge) && state.shotCount % 6 === 0;
       for (let k = 0; k < count; k += 1) {
         const fan = count === 1 ? 0 : (k - (count - 1) / 2) * 0.09;
         const spread = (random() - 0.5) * 0.06;
@@ -401,8 +350,9 @@ export function createWorld(random) {
         state.bullets.push({
           x: player.x + dx * 22, y: player.y + dy * 22,
           vx: dx * PLAYER.bulletSpeed, vy: dy * PLAYER.bulletSpeed,
-          life: PLAYER.bulletLife, pierce: stats.pierce, damage: stats.damage,
-          bounces: state.relics.ricochet ? 1 : 0,
+          life: PLAYER.bulletLife, pierce: stats.pierce + (overcharged ? 2 : 0),
+          damage: overcharged ? stats.damage * 3 : stats.damage,
+          bounces: state.relics.ricochet ? 1 : 0, big: overcharged,
         });
         burst(player.x + dx * 24, player.y + dy * 24, '#ffb347', 1, 40);
       }
@@ -482,6 +432,30 @@ export function createWorld(random) {
           spd = e.speed * 0.3;
           if (e.chargeT > 0.9) { e.chargeState = 'stalk'; e.chargeT = 0; }
         }
+      } else if (e.kind === 'shade') {
+        // Blinks across the dark in short hops toward the keeper.
+        e.blinkTimer -= dt;
+        if (e.blinkTimer <= 0 && d < 460) {
+          e.blinkTimer = 2.4;
+          burst(e.x, e.y, '#7a5cff', 8, 90);
+          e.x += ux * 130; e.y += uy * 130;
+          burst(e.x, e.y, '#7a5cff', 8, 90);
+        }
+      } else if (e.kind === 'bramble') {
+        // Roots itself at range and looses thorn spreads.
+        spd = e.speed * 0.15;
+        e.thornTimer -= dt;
+        if (e.thornTimer <= 0 && d < 520) {
+          e.thornTimer = 2.8;
+          for (const off of [-0.3, 0, 0.3]) {
+            const ca = Math.cos(off); const sa = Math.sin(off);
+            state.ebullets.push({
+              x: e.x, y: e.y,
+              vx: (ux * ca - uy * sa) * 210, vy: (ux * sa + uy * ca) * 210,
+              life: 3, radius: 7, damage: e.damage,
+            });
+          }
+        }
       } else if (e.kind === 'warden') {
         e.burstTimer -= dt;
         if (e.burstTimer <= 0) {
@@ -506,19 +480,29 @@ export function createWorld(random) {
           banner('The Herald rages');
           state.shake = Math.max(state.shake, 12);
         }
+        // Below a quarter the Herald breaks: chargers join the summons and
+        // the ring bursts come twice as fast.
+        if (!e.phase3 && e.hp < e.maxHp * 0.25) {
+          e.phase3 = true;
+          e.speed *= 1.25;
+          banner('The Herald breaks');
+          state.shake = Math.max(state.shake, 14);
+        }
         e.summonTimer -= dt;
         if (e.summonTimer <= 0) {
-          e.summonTimer = e.enraged ? 3.5 : 6;
-          for (let k = 0; k < 2; k += 1) {
-            const w = spawnEnemy('wisp');
+          e.summonTimer = e.phase3 ? 2.5 : e.enraged ? 3.5 : 6;
+          const summons = e.phase3 ? 3 : 2;
+          for (let k = 0; k < summons; k += 1) {
+            const kind = e.phase3 && k === 0 ? 'charger' : 'wisp';
+            const w = spawnEnemy(kind);
             w.x = e.x + (random() - 0.5) * 120; w.y = e.y + (random() - 0.5) * 120;
           }
           banner('The Herald calls the dark');
         }
         e.burstTimer -= dt;
         if (e.burstTimer <= 0) {
-          e.burstTimer = e.enraged ? 2.5 : 4;
-          const n = e.enraged ? 14 : 10;
+          e.burstTimer = e.phase3 ? 2 : e.enraged ? 2.5 : 4;
+          const n = e.phase3 ? 16 : e.enraged ? 14 : 10;
           for (let k = 0; k < n; k += 1) {
             const a = (k / n) * TAU;
             state.ebullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 190, vy: Math.sin(a) * 190, life: 3.5, radius: 8, damage: 15 });
@@ -528,6 +512,11 @@ export function createWorld(random) {
       const inLight = d < state.light;
       if (e.slowTimer > 0) spd *= 0.65;
       spd *= (inLight ? 0.85 : 1);
+      // Halo of Embers: foes standing in the light burn.
+      if (state.relics.halo && inLight) {
+        e.hp -= 2 * dt;
+        if (e.hp <= 0) { killEnemy(e, i); continue; }
+      }
       e.x += (mvx * spd + e.knockX) * dt;
       e.y += (mvy * spd + e.knockY) * dt;
       e.knockX *= 0.86; e.knockY *= 0.86;
@@ -611,7 +600,9 @@ export function createWorld(random) {
       if (p.life <= 0) { state.pickups.splice(i, 1); continue; }
       const dx = player.x - p.x; const dy = player.y - p.y;
       const d = Math.hypot(dx, dy) || 1;
-      if (d < PLAYER.pickupRadius) { p.x += (dx / d) * 320 * dt; p.y += (dy / d) * 320 * dt; }
+      // Shard Magnet: pickups fly to the keeper from twice as far.
+      const magnet = PLAYER.pickupRadius * (state.relics.magnet ? 2 : 1);
+      if (d < magnet) { p.x += (dx / d) * 320 * dt; p.y += (dy / d) * 320 * dt; }
       else { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.95; p.vy *= 0.95; }
       if (d < player.radius + 12) {
         state.pickups.splice(i, 1);
@@ -640,7 +631,8 @@ export function createWorld(random) {
       const bonus = 100 * state.wave;
       state.score += bonus;
       addText(player.x, player.y - 30, `Wave clear +${bonus}`, '#ffd166');
-      if (state.wave >= WAVES) {
+      // Only wave 10 of a first run wins; endless waves return to the shop.
+      if (state.wave === WAVES && !state.endless) {
         state.waveState = 'won';
         return events | EVENT_WIN;
       }
@@ -657,7 +649,7 @@ export function createWorld(random) {
   /** The title screen's backdrop: wisps drift and embers float, nothing can hurt. */
   function stepTitle(dt) {
     state.time += dt;
-    if (state.enemies.length < 7 && random() < dt * 0.7) {
+    if (state.enemies.length < 12 && random() < dt * 0.7) {
       const w = spawnEnemy('wisp');
       w.x = random() * FIELD.width; w.y = random() * FIELD.height;
       w.spawnAge = 1; // title wisps arrive already formed
@@ -667,7 +659,7 @@ export function createWorld(random) {
       e.x += Math.cos(e.phase * 0.5) * 12 * dt;
       e.y += Math.sin(e.phase * 0.7) * 10 * dt;
     }
-    if (random() < dt * 6) {
+    if (random() < dt * 10) {
       addParticle(random() * FIELD.width, FIELD.height + 6, (random() - 0.5) * 12, -24 - random() * 30, 3, 2 + random() * 2, '#ffb347');
     }
     for (let i = state.particles.length - 1; i >= 0; i -= 1) {
@@ -677,5 +669,5 @@ export function createWorld(random) {
     }
   }
 
-  return { state, reset, startWave, buyUpgrade, buyRelic, step, stepTitle };
+  return { state, reset, startWave, setDifficulty, startEndless, buyUpgrade, buyRelic, step, stepTitle };
 }

@@ -8,9 +8,12 @@
 //
 // Emberkeep is a top-down arena defence game: a lantern-keeper holds the
 // light in a garden gone dark, shooting ember bolts at waves of shadow
-// wisps, skitters, spitters and brutes, spending sunshards on upgrades
-// between waves, and facing the Gloom Herald on wave 10. Ten waves, a boss,
-// a shop, dash, WebAudio sound, particles and a win screen.
+// wisps, skitters, spitters, brutes, splitters, chargers, moths, shades
+// and brambles, spending sunshards on upgrades and drafting relics between
+// waves, and facing the Dusk Warden on wave 5 and the Gloom Herald on
+// wave 10. Ten waves, three bosses, three difficulties, twelve relics, a
+// shop, dash, WebAudio sound, particles and a win screen — and after dawn,
+// endless waves for as long as the keeper lasts.
 //
 // Serve it locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:

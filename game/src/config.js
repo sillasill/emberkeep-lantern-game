@@ -9,6 +9,13 @@ export const STEP = 1 / 60;
 /** Ten waves; wave 10 ends with the Gloom Herald. Clear it and you win. */
 export const WAVES = 10;
 
+/** Three ways to keep the lantern: foe toughness, foe damage and score. */
+export const DIFFICULTIES = [
+  { id: 'lantern', key: '1', name: 'Lantern-Bearer', desc: 'A gentler dark, for learning the garden', hp: 0.8, damage: 0.8, score: 0.9 },
+  { id: 'keeper',   key: '2', name: 'Keeper',         desc: 'The garden as it was meant to be kept',   hp: 1,   damage: 1,   score: 1 },
+  { id: 'night',    key: '3', name: 'Nightkeeper',    desc: 'The dark at its worst — and its richest',  hp: 1.3, damage: 1.2, score: 1.3 },
+];
+
 export const PLAYER = {
   radius: 16,
   speed: 270,
@@ -47,6 +54,10 @@ export const ENEMIES = {
   charger: { hp: 55,  speed: 62,  radius: 14, damage: 14, score: 150, shards: 2, color: '#ff9f43' },
   // Drifts in a wide sine and looses a three-bolt spread at the keeper.
   moth:    { hp: 30,  speed: 82,  radius: 12, damage: 8,  score: 125, shards: 2, color: '#8ef1d4' },
+  // Blinks across the dark in short hops, closing the distance in bursts.
+  shade:   { hp: 26,  speed: 150, radius: 12, damage: 10, score: 150, shards: 2, color: '#7a5cff' },
+  // Roots itself at range and looses thorn spreads; slow, but it holds ground.
+  bramble: { hp: 60,  speed: 26,  radius: 16, damage: 12, score: 175, shards: 2, color: '#5ec95e' },
   // The wave 5 mini-boss: ring bursts and summons, smaller than the Herald.
   warden:  { hp: 420, speed: 46,  radius: 26, damage: 18, score: 1000, shards: 10, color: '#9fd8ff' },
   herald:  { hp: 950, speed: 42,  radius: 34, damage: 25, score: 2000, shards: 20, color: '#e8c15a' },
@@ -54,18 +65,6 @@ export const ENEMIES = {
 
 /** Elites: bigger, tougher, worth more. Their hp and score scale from the base. */
 export const ELITE = { hp: 2.5, speed: 1.05, radius: 1.15, score: 3, shards: 2 };
-
-/** Shop upgrades between waves. cost grows each time one is bought. */
-export const UPGRADES = [
-  { id: 'damage', key: '1', name: 'Ember Damage', desc: '+4 bolt damage', base: 6, growth: 1.5, max: 8 },
-  { id: 'rate',   key: '2', name: 'Quick Hands',  desc: '+15% fire rate',  base: 8, growth: 1.5, max: 6 },
-  { id: 'speed',  key: '3', name: 'Swift Boots',  desc: '+12% move speed', base: 4, growth: 1.4, max: 5 },
-  { id: 'light',  key: '4', name: 'Bright Lantern', desc: '+32 light radius', base: 6, growth: 1.5, max: 6 },
-  { id: 'heart',  key: '5', name: 'Heartwood',    desc: '+25 max HP, heal 25', base: 7, growth: 1.5, max: 6 },
-  { id: 'pierce', key: '6', name: 'Piercing Embers', desc: 'bolts pierce +1 foe', base: 12, growth: 1.6, max: 2 },
-  { id: 'multi',  key: '7', name: 'Twin Bolts',    desc: '+1 bolt per shot',   base: 14, growth: 1.7, max: 2 },
-  { id: 'regen',  key: '8', name: 'Moss Heart',    desc: 'regenerate +0.6 HP/s', base: 9, growth: 1.5, max: 4 },
-];
 
 export const PALETTE = {
   backdrop: '#070a12',

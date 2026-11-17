@@ -16,6 +16,36 @@ const LIMIT_SECONDS = 600;
 /** The order the win staging buys upgrades in at each rest. */
 const SHOP_BUY_ORDER = ['damage', 'rate', 'speed', 'light', 'heart', 'pierce', 'multi', 'regen'];
 
+function playRest(world) {
+  const s = world.state;
+  if (s.relicDraft) world.buyRelic(0);
+  for (const id of SHOP_BUY_ORDER) {
+    while (world.buyUpgrade(id)) { /* keep buying while affordable */ }
+  }
+}
+
+/**
+ * Play waves 1..(target-1) for real — relics taken, upgrades bought — and
+ * stop at the rest before wave `target`. Returns 'rest' when the keeper
+ * reaches that rest, 'won' / 'lost' when the run ends first, 'timeout' when
+ * the step budget runs out.
+ */
+function playToWave(world, target) {
+  world.startWave(1);
+  for (let i = 0; i < LIMIT_SECONDS / STEP; i += 1) {
+    const events = stepWorld(world, autopilot(world.state));
+    if (events & EVENT_WIN) return 'won';
+    if (events & EVENT_OVER) return 'lost';
+    if (events & EVENT_CLEAR) {
+      const s = world.state;
+      if (s.wave + 1 >= target) return 'rest';
+      playRest(world);
+      world.startWave(s.wave + 1);
+    }
+  }
+  return 'timeout';
+}
+
 function nearestEnemy(state, preferKind) {
   const p = state.player;
   let best = null;
@@ -98,6 +128,12 @@ export function stageShot(name, world) {
     return { screen: world.state.waveState === 'lost' ? SCREEN_OVER : SCREEN_PLAY, best: world.state.score };
   }
   if (name === 'shop') {
+    // A richer rest: the keeper arrives at wave 4's rest with relics owned,
+    // upgrades bought and shards to spend, so the shop shows a real build.
+    if (playToWave(world, 5) === 'rest') {
+      return { screen: SCREEN_SHOP, best: world.state.score };
+    }
+    world.reset();
     world.startWave(1);
     for (let i = 0; i < LIMIT_SECONDS / STEP; i += 1) {
       if (stepWorld(world, autopilot(world.state)) & EVENT_CLEAR) break;
@@ -107,24 +143,46 @@ export function stageShot(name, world) {
   if (name === 'win') {
     // Play the whole game for real: take the first offered relic and buy
     // every affordable upgrade at each rest, the way a keeper would.
-    world.startWave(1);
-    for (let i = 0; i < LIMIT_SECONDS / STEP; i += 1) {
-      const events = stepWorld(world, autopilot(world.state));
-      if (events & EVENT_CLEAR) {
-        const s = world.state;
-        if (s.relicDraft) world.buyRelic(0);
-        for (const id of SHOP_BUY_ORDER) {
-          while (world.buyUpgrade(id)) { /* keep buying while affordable */ }
-        }
-        world.startWave(s.wave + 1);
-      }
-      if (events & EVENT_WIN) break;
-      if (events & EVENT_OVER) break;
-    }
+    playToWave(world, 11);
     return { screen: world.state.waveState === 'won' ? SCREEN_WIN : SCREEN_PLAY, best: world.state.score };
   }
-  // play: wave 5, mid-fight against the Dusk Warden, lantern lit, HUD full.
-  // The autopilot hunts the Warden so the boss is in frame, not off-screen.
+  // play: a powered keeper mid-fight against the Gloom Herald on wave 10 —
+  // ring bursts, summoned shadows and a full HUD, the run's climax in frame.
+  // The autopilot hunts the Herald so the boss is in frame, not off-screen.
+  if (playToWave(world, 10) === 'rest') {
+    world.startWave(10);
+    for (let i = 0; i < PLAY_SECONDS / STEP; i += 1) {
+      stepWorld(world, autopilot(world.state, 'herald'));
+      const s = world.state;
+      if (s.waveState !== 'fight') break;
+      // Stop mid-fight: the Herald hurt but alive, the frame busy. A powered
+      // keeper can win the whole wave in these 16 seconds otherwise.
+      const herald = s.enemies.find((e) => e.kind === 'herald');
+      if (herald && herald.hp < herald.maxHp * 0.55) break;
+    }
+    // Frame the shot: the Herald and the nearest foes step into view beside
+    // the keeper. The fight is over; only the camera's subjects move, so the
+    // boss is in the lit part of the frame instead of drifting to an edge.
+    const s1 = world.state;
+    const herald1 = s1.enemies.find((e) => e.kind === 'herald');
+    if (herald1) {
+      herald1.x = Math.min(1100, Math.max(200, s1.player.x + 280));
+      herald1.y = Math.min(560, Math.max(140, s1.player.y - 120));
+    }
+    const near = s1.enemies.filter((e) => e.kind !== 'herald')
+      .sort((a, b) => Math.hypot(a.x - s1.player.x, a.y - s1.player.y) - Math.hypot(b.x - s1.player.x, b.y - s1.player.y))
+      .slice(0, 3);
+    for (const e of near) {
+      const dx = e.x - s1.player.x; const dy = e.y - s1.player.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const pull = Math.min(d, 380);
+      e.x = s1.player.x + (dx / d) * pull;
+      e.y = s1.player.y + (dy / d) * pull;
+    }
+    return { screen: SCREEN_PLAY, best: world.state.score };
+  }
+  // Fallback if the run ended early: wave 5, mid-fight against the Warden.
+  world.reset();
   world.startWave(5);
   for (let i = 0; i < PLAY_SECONDS / STEP; i += 1) {
     stepWorld(world, autopilot(world.state, 'warden'));

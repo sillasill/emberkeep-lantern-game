@@ -3,9 +3,9 @@
 // is drawn from a fixed seeded scatter of grass tufts and stones, so the
 // scene is the same every visit. The lantern's light is a radial gradient
 // centred on the keeper: bright near them, dark at the field's edges.
-import { ENEMIES, FIELD, FONT, PALETTE, UPGRADES } from './config.js';
+import { DIFFICULTIES, ENEMIES, FIELD, FONT, PALETTE } from './config.js';
 import { relicById } from './relics.js';
-import { upgradeCost } from './world.js';
+import { UPGRADES, upgradeCost } from './upgrades.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
@@ -19,6 +19,10 @@ export const SHOP = { x: 290, y: 272, width: 700, rowH: 44 };
 /** The three relic cards offered at the rest, in field coordinates. */
 export const RELIC_CARDS = { y: 160, width: 220, height: 100, gap: 20 };
 export const RELIC_KEYS = ['Q', 'W', 'E'];
+/** The three difficulty cards on the title screen, in field coordinates. */
+export const DIFFICULTY_CARDS = { x: 290, y: 316, width: 220, height: 96, gap: 20 };
+/** The Endless button on the victory panel, in field coordinates. */
+export const ENDLESS_BTN = { x: 490, y: 470, width: 300, height: 44 };
 
 function seededScatter(count, seed) {
   let a = seed | 0;
@@ -276,6 +280,33 @@ export function createRenderer(canvas) {
       context.beginPath();
       context.ellipse(0, 2, 5, 8, 0, 0, Math.PI * 2);
       context.fill();
+    } else if (e.kind === 'shade') {
+      // A blinking diamond, dark violet with a pale core.
+      context.fillStyle = def.color;
+      context.save();
+      context.rotate(Math.PI / 4);
+      context.fillRect(-e.radius * 0.75, -e.radius * 0.75, e.radius * 1.5, e.radius * 1.5);
+      context.restore();
+      context.fillStyle = '#e9e4ff';
+      context.beginPath();
+      context.arc(0, 0, 4, 0, Math.PI * 2);
+      context.fill();
+    } else if (e.kind === 'bramble') {
+      // A rooted thorn ball: green spikes around a dark heart.
+      context.fillStyle = def.color;
+      context.beginPath();
+      for (let i = 0; i < 10; i += 1) {
+        const a = (i / 10) * Math.PI * 2;
+        const rr = i % 2 === 0 ? e.radius + 6 : e.radius - 2;
+        const px = Math.cos(a) * rr; const py = Math.sin(a) * rr;
+        if (i === 0) context.moveTo(px, py); else context.lineTo(px, py);
+      }
+      context.closePath();
+      context.fill();
+      context.fillStyle = '#0d1a16';
+      context.beginPath();
+      context.arc(0, 0, 6, 0, Math.PI * 2);
+      context.fill();
     } else if (e.kind === 'warden') {
       // The Dusk Warden: a tall blue shadow with a square crown.
       context.fillStyle = '#16283d';
@@ -405,7 +436,7 @@ export function createRenderer(canvas) {
     context.fill();
     text(`${Math.ceil(p.hp)} / ${p.maxHp} HP`, 210, 32, 18, PALETTE.text, 'left', 'middle');
     text(`Score ${state.score}`, 430, 32, 22, PALETTE.text, 'left', 'middle');
-    text(`Wave ${Math.max(1, state.wave)} / 10`, 640, 32, 22, PALETTE.text, 'center', 'middle');
+    text(state.endless ? `Endless Wave ${state.wave}` : `Wave ${Math.max(1, state.wave)} / 10`, 640, 32, 22, PALETTE.text, 'center', 'middle');
     text(`◆ ${state.shards}`, 830, 32, 22, PALETTE.gold, 'left', 'middle');
     const left = state.spawnQueue.length + state.enemies.length;
     text(screen === SCREEN_SHOP ? 'Wave cleared!' : `Foes left: ${left}`, 980, 32, 20, PALETTE.muted, 'left', 'middle');
@@ -421,7 +452,16 @@ export function createRenderer(canvas) {
       context.fillRect(340, 60, 600, 26);
       context.fillStyle = state.bossLabel === 'THE GLOOM HERALD' ? PALETTE.boss : '#9fd8ff';
       context.fillRect(344, 64, 592 * (state.bossHp / state.bossMax), 18);
-      text(state.bossLabel || 'BOSS', 640, 73, 15, state.bossLabel === 'THE GLOOM HERALD' ? PALETTE.boss : '#9fd8ff', 'center', 'middle');
+      // White with a dark outline, so the name reads over both the coloured
+      // fill and the dark track behind it.
+      context.font = `600 15px ${FONT}`;
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.lineWidth = 3;
+      context.strokeStyle = '#070a12';
+      context.strokeText(state.bossLabel || 'BOSS', 640, 73);
+      context.fillStyle = '#ffffff';
+      context.fillText(state.bossLabel || 'BOSS', 640, 73);
     }
     // Combo: chained kills multiply the score while the timer holds.
     if (state.combo >= 3) {
@@ -442,12 +482,104 @@ export function createRenderer(canvas) {
       context.fill();
       text(relic.name[0], cx, 66, 13, '#070a12', 'center', 'middle');
     }
-    // Wave banner.
-    if (state.bannerTimer > 0) {
+    // Wave banner — only while playing or resting; the end panels cover it.
+    if ((screen === SCREEN_PLAY || screen === SCREEN_SHOP) && state.bannerTimer > 0) {
       context.globalAlpha = Math.min(1, state.bannerTimer);
       text(state.banner, FIELD.width / 2, 130, 34, PALETTE.gold, 'center', 'middle');
       context.globalAlpha = 1;
     }
+  }
+
+  /** The title screen: the garden behind, the name, what the game holds,
+   *  and three difficulties to choose from before the run starts. */
+  function drawTitle(state, best) {
+    const glow = context.createRadialGradient(640, 320, 40, 640, 320, 460);
+    glow.addColorStop(0, 'rgba(255, 209, 102, 0.12)');
+    glow.addColorStop(1, 'rgba(255, 209, 102, 0)');
+    context.fillStyle = glow;
+    context.fillRect(0, 0, FIELD.width, FIELD.height);
+    const x = 260; const y = 64; const width = 760; const height = 560;
+    context.fillStyle = 'rgba(7, 10, 18, 0.88)';
+    roundRect(x, y, width, height, 14);
+    context.fill();
+    context.strokeStyle = PALETTE.panelEdge;
+    context.lineWidth = 2;
+    roundRect(x, y, width, height, 14);
+    context.stroke();
+    text('EMBERKEEP', FIELD.width / 2, y + 78, 64, PALETTE.gold, 'center', 'middle');
+    text('The last lantern in a garden gone dark.', FIELD.width / 2, y + 126, 20, PALETTE.text, 'center', 'middle');
+    text('Hold the light. Spend the shards. Survive ten waves.', FIELD.width / 2, y + 154, 20, PALETTE.text, 'center', 'middle');
+    text('10 waves  •  12 relics  •  11 foes  •  3 bosses  •  endless after dawn', FIELD.width / 2, y + 188, 18, PALETTE.gold, 'center', 'middle');
+    text('Choose your darkness:', FIELD.width / 2, y + 226, 18, PALETTE.muted, 'center', 'middle');
+    for (let i = 0; i < DIFFICULTIES.length; i += 1) {
+      const d = DIFFICULTIES[i];
+      const cx = DIFFICULTY_CARDS.x + i * (DIFFICULTY_CARDS.width + DIFFICULTY_CARDS.gap);
+      const cy = DIFFICULTY_CARDS.y;
+      const selected = state.difficulty === d.id;
+      context.fillStyle = selected ? '#3a2f10' : '#101823';
+      roundRect(cx, cy, DIFFICULTY_CARDS.width, DIFFICULTY_CARDS.height, 10);
+      context.fill();
+      context.strokeStyle = selected ? PALETTE.gold : PALETTE.panelEdge;
+      context.lineWidth = selected ? 2.5 : 1.5;
+      roundRect(cx, cy, DIFFICULTY_CARDS.width, DIFFICULTY_CARDS.height, 10);
+      context.stroke();
+      text(`[${d.key}] ${d.name}`, cx + DIFFICULTY_CARDS.width / 2, cy + 26, 18, selected ? PALETTE.gold : PALETTE.text, 'center', 'middle');
+      const descLines = wrapLines(d.desc, DIFFICULTY_CARDS.width - 16, 13);
+      for (let j = 0; j < descLines.length; j += 1) {
+        text(descLines[j], cx + DIFFICULTY_CARDS.width / 2, cy + 52 + j * 16, 13, PALETTE.muted, 'center', 'middle');
+      }
+    }
+    text('Move WASD / arrows  •  Aim mouse  •  Hold click to shoot', FIELD.width / 2, y + 384, 20, PALETTE.text, 'center', 'middle');
+    text('Dash Shift  •  Pause P  •  Mute M', FIELD.width / 2, y + 414, 20, PALETTE.text, 'center', 'middle');
+    text(`Best score: ${best}`, FIELD.width / 2, y + 452, 18, PALETTE.muted, 'center', 'middle');
+    text('Press Space or click to begin', FIELD.width / 2, y + 512, 22, PALETTE.gold, 'center', 'middle');
+  }
+
+  function formatTime(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  function difficultyName(state) {
+    const d = DIFFICULTIES.find((x) => x.id === state.difficulty);
+    return d ? d.name : 'Keeper';
+  }
+
+  /** The victory panel: the run's numbers, and a way onward into endless. */
+  function drawWin(state, best) {
+    const x = 320; const y = 130; const width = 640; const height = 390;
+    context.fillStyle = 'rgba(7, 10, 18, 0.88)';
+    roundRect(x, y, width, height, 14);
+    context.fill();
+    context.strokeStyle = PALETTE.gold;
+    context.lineWidth = 2;
+    roundRect(x, y, width, height, 14);
+    context.stroke();
+    text('VICTORY — Dawn Returns', FIELD.width / 2, y + 62, 44, PALETTE.gold, 'center', 'middle');
+    text(`Score ${state.score}  •  Best ${best}`, FIELD.width / 2, y + 118, 20, PALETTE.text, 'center', 'middle');
+    text(`All ten waves cleared  •  ${state.kills} shadows banished`, FIELD.width / 2, y + 150, 20, PALETTE.muted, 'center', 'middle');
+    text(`Time ${formatTime(state.time)}  •  ${Object.keys(state.relics).length} relics  •  ${difficultyName(state)}  •  Best combo x${Math.min(3, 1 + 0.1 * state.bestCombo).toFixed(1)}`, FIELD.width / 2, y + 182, 20, PALETTE.muted, 'center', 'middle');
+    text('The Gloom Herald is unmade. The garden blooms again.', FIELD.width / 2, y + 214, 20, PALETTE.muted, 'center', 'middle');
+    context.fillStyle = '#1d3a2a';
+    roundRect(ENDLESS_BTN.x, ENDLESS_BTN.y, ENDLESS_BTN.width, ENDLESS_BTN.height, 10);
+    context.fill();
+    context.strokeStyle = PALETTE.gold;
+    context.lineWidth = 1.5;
+    roundRect(ENDLESS_BTN.x, ENDLESS_BTN.y, ENDLESS_BTN.width, ENDLESS_BTN.height, 10);
+    context.stroke();
+    text('Endless — keep going  (E)', FIELD.width / 2, ENDLESS_BTN.y + 22, 19, PALETTE.text, 'center', 'middle');
+    text('Press Space or click to play again', FIELD.width / 2, y + height + 34, 22, PALETTE.gold, 'center', 'middle');
+  }
+
+  /** The game-over panel: the run's numbers, and play again at once. */
+  function drawOver(state, best) {
+    drawPanel('The Light Goes Out', [
+      `Score ${state.score}  •  Best ${best}`,
+      `Wave ${state.wave} of 10  •  ${state.kills} shadows banished`,
+      `Time ${formatTime(state.time)}  •  ${Object.keys(state.relics).length} relics  •  ${difficultyName(state)}  •  Best combo x${Math.min(3, 1 + 0.1 * state.bestCombo).toFixed(1)}`,
+      'The garden waits in the dark. The lantern can be lit again.',
+    ], 'Press Space or click to play again');
   }
 
   function drawPanel(title, lines, prompt, accent) {
@@ -570,15 +702,17 @@ export function createRenderer(canvas) {
     drawPlayer(state);
     context.fillStyle = PALETTE.bullet;
     for (const b of state.bullets) {
-      // A short trail behind each bolt, so shots read as shots.
-      context.strokeStyle = 'rgba(255, 179, 71, 0.55)';
-      context.lineWidth = 3;
+      // A short trail behind each bolt, so shots read as shots. Heavy
+      // overcharge embers draw bigger and brighter.
+      context.strokeStyle = b.big ? 'rgba(255, 159, 67, 0.8)' : 'rgba(255, 179, 71, 0.55)';
+      context.lineWidth = b.big ? 5 : 3;
       context.beginPath();
       context.moveTo(b.x - b.vx * 0.03, b.y - b.vy * 0.03);
       context.lineTo(b.x, b.y);
       context.stroke();
+      context.fillStyle = b.big ? '#ff9f43' : PALETTE.bullet;
       context.beginPath();
-      context.arc(b.x, b.y, 5, 0, Math.PI * 2);
+      context.arc(b.x, b.y, b.big ? 9 : 5, 0, Math.PI * 2);
       context.fill();
     }
     // Particles and floating texts.
@@ -606,14 +740,7 @@ export function createRenderer(canvas) {
     }
 
     if (screen === SCREEN_TITLE) {
-      drawPanel('EMBERKEEP', [
-        'The last lantern in a garden gone dark.',
-        'Hold the light. Spend the shards. Survive ten waves.',
-        'Relics choose your path — the Warden waits on wave 5.',
-        'Move WASD / arrows  •  Aim mouse  •  Hold click to shoot',
-        'Dash Shift  •  Pause P  •  Mute M',
-        `Best score: ${best}`,
-      ], 'Press Space or click to begin');
+      drawTitle(state, best);
       return;
     }
     drawHud(state, screen);
@@ -621,18 +748,9 @@ export function createRenderer(canvas) {
     else if (screen === SCREEN_PAUSED) {
       drawPanel('Paused', ['The garden waits in the dark.'], 'Press P to resume');
     } else if (screen === SCREEN_OVER) {
-      drawPanel('The Light Goes Out', [
-        `Score ${state.score}  •  Best ${best}`,
-        `Wave ${state.wave} of 10  •  ${state.kills} shadows banished  •  Best combo x${Math.min(3, 1 + 0.1 * state.bestCombo).toFixed(1)}`,
-        `${Object.keys(state.relics).length} relic${Object.keys(state.relics).length === 1 ? '' : 's'} found  •  ${state.shards} shards kept`,
-        '',
-      ], 'Press Space or click to play again');
+      drawOver(state, best);
     } else if (screen === SCREEN_WIN) {
-      drawPanel('VICTORY — Dawn Returns', [
-        `Score ${state.score}  •  Best ${best}`,
-        `All ten waves cleared  •  ${state.kills} shadows banished  •  Best combo x${Math.min(3, 1 + 0.1 * state.bestCombo).toFixed(1)}`,
-        'The Gloom Herald is unmade. The garden blooms again.',
-      ], 'Press Space or click to play again', PALETTE.gold);
+      drawWin(state, best);
     }
   }
 

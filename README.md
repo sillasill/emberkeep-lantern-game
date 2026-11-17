@@ -20,9 +20,19 @@ side, and the dark beyond the light is where they are fastest.
 
 New shadows stalk the garden: splitters divide into wisps when slain,
 chargers telegraph a line and rush through it, moths loose three-bolt
-spreads, and golden elites hit harder and pay more. Wave 5 brings the
-Dusk Warden, wave 6 a swarm, wave 8 the Long Dark (your light shrinks),
-wave 9 a siege — and below half health, the Herald rages.
+spreads, shades blink toward you and brambles root themselves to fire
+thorn spreads, and golden elites hit harder and pay more. Wave 5 brings
+the Dusk Warden, wave 6 a swarm, wave 8 the Long Dark (your light
+shrinks), wave 9 a siege — and below half health the Herald rages, and
+below a quarter it breaks, summoning chargers and firing sixteen-bolt
+bursts.
+
+Three difficulties wait on the title screen: Lantern-Bearer (a gentler
+dark, for learning the garden), Keeper (the garden as it was meant to be
+kept) and Nightkeeper (tougher foes, richer scores). Clear all ten waves
+and dawn returns — then the Endless button, or E, keeps the run going:
+waves past ten grow denser, a Herald returns every fifth wave, and the
+run ends only when you fall.
 
 - **Fight:** move with WASD or arrows, aim with the mouse, hold click to
   shoot ember bolts. Shift dashes (briefly invulnerable). Enemies drop
@@ -31,14 +41,18 @@ wave 9 a siege — and below half health, the Herald rages.
 - **Relics:** after every cleared wave, the Lantern Rest offers a choice
   of three relics, free, one per rest — Ember Nova, Twin Flame, Frostbite
   Embers, Bloodlight, Ricochet Embers, Thorned Lantern, Gilded Shards,
-  Swift Step. Each run draws a different hand, so no two runs play alike.
+  Swift Step, Shard Magnet, Second Dawn, Overcharge and Halo of Embers.
+  Each run draws a different hand, so no two runs play alike. Second Dawn
+  refuses the first killing blow once per run; Overcharge turns every
+  sixth shot into a heavy ember; the Halo burns foes inside your light.
 - **Grow:** the Rest's shop sells eight upgrades for shards — ember
   damage, fire rate, move speed, lantern radius, max HP, piercing bolts,
   twin bolts, regeneration. Buy with keys 1–8 or by clicking, pick a
   relic with Q/W/E or by clicking, then press Enter for the next wave.
 - **Win or lose:** clear all ten waves and dawn returns. Fall, and the
-  light goes out — your score, best score, wave, kills, best combo and
-  relics are shown, and you can play again at once.
+  light goes out — your score, best score, wave, kills, best combo, time,
+  relics and difficulty are shown, and you can play again at once. After
+  a victory, Endless keeps the garden coming.
 - **Feel:** fixed 1/60 s simulation, particles, screen shake, floating
   damage numbers, hit flashes, spawn telegraphs, bolt trails, wave
   banners, a boss health bar, and WebAudio synth sound effects and drone
@@ -65,8 +79,11 @@ or generated in code.
 - `game/src/random.js` — the seeded generator (mulberry32).
 - `game/src/audio.js` — WebAudio synth effects and ambience.
 - `game/src/input.js` — keyboard and pointer input.
-- `game/src/world.js` — the rules: keeper, horde, waves, shop, relics,
-  combo, bosses. `game/src/relics.js` — the eight relics and the draft.
+- `game/src/world.js` — the rules: keeper, horde, shop, relics,
+  combo, bosses, difficulties and endless waves.
+- `game/src/waves.js` — what each wave (and each endless wave) holds.
+- `game/src/upgrades.js` — the eight shop upgrades and their costs.
+- `game/src/relics.js` — the twelve relics and the draft.
 - `game/src/render.js` — drawing only: field, light, HUD, panels, shop.
 - `game/src/shots.js` — the deterministic screenshot scenes
   (`?shot=start|play|shop|win|end&seed=N`, staged by the real rules and

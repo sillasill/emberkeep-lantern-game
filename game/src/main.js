@@ -6,17 +6,17 @@
 // ?seed=N fixes the spawn pattern. ?shot=start|play|shop|win|end (with
 // &seed=N) stages that scene instead of running the loop, paints it every
 // frame and sets window.__shotReady for a screenshot.
-import { BEST_KEY, STEP } from './config.js';
+import { BEST_KEY, DIFFICULTIES, STEP } from './config.js';
 import { createRandom } from './random.js';
 import { createAudio } from './audio.js';
 import { createWorld, EVENT_CLEAR, EVENT_ELITE, EVENT_HIT, EVENT_OVER, EVENT_PICKUP, EVENT_SHOOT, EVENT_WIN } from './world.js';
 import { ACTION_CONFIRM, ACTION_DASH, ACTION_MUTE, ACTION_PAUSE, createInput } from './input.js';
 import {
-  RELIC_CARDS, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_SHOP, SCREEN_TITLE, SCREEN_WIN, SHOP,
+  DIFFICULTY_CARDS, ENDLESS_BTN, RELIC_CARDS, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_SHOP, SCREEN_TITLE, SCREEN_WIN, SHOP,
   createRenderer,
 } from './render.js';
 import { stageShot } from './shots.js';
-import { UPGRADES } from './config.js';
+import { UPGRADES } from './upgrades.js';
 
 /** The longest frame the loop catches up on; a longer stall is dropped. */
 const MAX_FRAME = 0.25;
@@ -102,13 +102,65 @@ function runGame() {
       : `Game over. Score ${world.state.score}. Best ${best}.`);
   }
 
+  function startEndless() {
+    audio.unlock();
+    if (world.startEndless()) {
+      screen = SCREEN_PLAY;
+      announce(`Endless Wave ${world.state.wave}. The dark returns.`);
+    }
+  }
+
   function handleActions() {
     const actions = input.takeActions();
     if (actions & ACTION_MUTE) {
       const muted = audio.toggleMute();
       announce(muted ? 'Sound off.' : 'Sound on.');
     }
-    if (screen === SCREEN_TITLE || screen === SCREEN_OVER || screen === SCREEN_WIN) {
+    if (screen === SCREEN_TITLE) {
+      // Keys 1-3 and clicks on the cards choose the darkness; anywhere
+      // else (or Space) starts the run with the chosen difficulty.
+      const diffKey = input.takeShopKey();
+      if (diffKey === '1' || diffKey === '2' || diffKey === '3') {
+        const d = DIFFICULTIES[Number.parseInt(diffKey, 10) - 1];
+        if (d && world.setDifficulty(d.id)) announce(`${d.name}. ${d.desc}`);
+      }
+      const click = input.takeClick();
+      if (click) {
+        const field = renderer.toField(click.x, click.y);
+        for (let i = 0; i < DIFFICULTIES.length; i += 1) {
+          const cx = DIFFICULTY_CARDS.x + i * (DIFFICULTY_CARDS.width + DIFFICULTY_CARDS.gap);
+          if (field.x >= cx && field.x <= cx + DIFFICULTY_CARDS.width
+            && field.y >= DIFFICULTY_CARDS.y && field.y <= DIFFICULTY_CARDS.y + DIFFICULTY_CARDS.height) {
+            if (world.setDifficulty(DIFFICULTIES[i].id)) announce(`${DIFFICULTIES[i].name}. ${DIFFICULTIES[i].desc}`);
+            return;
+          }
+        }
+        startGame();
+        return;
+      }
+      if (actions & ACTION_CONFIRM) startGame();
+      return;
+    }
+    if (screen === SCREEN_OVER) {
+      if (actions & ACTION_CONFIRM) startGame();
+      return;
+    }
+    if (screen === SCREEN_WIN) {
+      // E (or the Endless button) keeps the run going past wave 10; Space
+      // or a click anywhere else starts a fresh run.
+      const relicKey = input.takeRelicKey();
+      if (relicKey === '3') { startEndless(); return; }
+      const click = input.takeClick();
+      if (click) {
+        const field = renderer.toField(click.x, click.y);
+        if (field.x >= ENDLESS_BTN.x && field.x <= ENDLESS_BTN.x + ENDLESS_BTN.width
+          && field.y >= ENDLESS_BTN.y && field.y <= ENDLESS_BTN.y + ENDLESS_BTN.height) {
+          startEndless();
+          return;
+        }
+        startGame();
+        return;
+      }
       if (actions & ACTION_CONFIRM) startGame();
       return;
     }

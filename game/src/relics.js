@@ -1,7 +1,7 @@
 // Relics: one-of-three blessings offered free at the Lantern Rest after
 // every cleared wave. Each relic is taken once per run and bends the run in
 // a different direction, so two runs with different relics play differently.
-// The draft is drawn from what the keeper does not own yet; when all eight
+// The draft is drawn from what the keeper does not own yet; when all twelve
 // are owned, no draft is offered. Applying a relic lives in world.js, which
 // owns the state; this file only describes the relics and draws the draft.
 export const RELICS = [
@@ -44,6 +44,26 @@ export const RELICS = [
     id: 'swift', name: 'Swift Step', color: '#8ef1d4',
     desc: 'Dash recharges 40% faster.',
     flavor: 'Run like the dawn is coming.',
+  },
+  {
+    id: 'magnet', name: 'Shard Magnet', color: '#ffd166',
+    desc: 'Shards and hearts fly to you from twice as far.',
+    flavor: 'The garden leans toward its keeper.',
+  },
+  {
+    id: 'second-wind', name: 'Second Dawn', color: '#fff3c4',
+    desc: 'The first killing blow instead leaves you at half health and scatters nearby foes.',
+    flavor: 'The light refuses to die once.',
+  },
+  {
+    id: 'overcharge', name: 'Overcharge Ember', color: '#ff9f43',
+    desc: 'Every 6th shot is a heavy ember: triple damage, piercing two foes.',
+    flavor: 'Six small lights, one great one.',
+  },
+  {
+    id: 'halo', name: 'Halo of Embers', color: '#ff7ab8',
+    desc: 'Foes standing in your light burn for 2 damage every second.',
+    flavor: 'Stand close. It hurts them more.',
   },
 ];
 
